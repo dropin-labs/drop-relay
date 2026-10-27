@@ -18,7 +18,7 @@ import (
 	relayHTTP "github.com/dropin-labs/drop-relay/internal/http"
 )
 
-var Version = "0.1.1"
+var Version = "0.1.2"
 
 func main() {
 	if len(os.Args) > 1 {

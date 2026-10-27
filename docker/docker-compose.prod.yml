@@ -8,7 +8,7 @@
 services:
   relay:
     container_name: drop-relay
-    image: dropinlabs/drop-relay:0.1.1
+    image: dropinlabs/drop-relay:0.1.2
     build:
       context: ..
       dockerfile: docker/Dockerfile

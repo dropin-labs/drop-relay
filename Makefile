@@ -5,7 +5,7 @@
 .PHONY: all build test test-race test-e2e lint clean dkim verify-dns scan scan-fs scan-image docker-build docker-up docker-down
 
 BINARY=bin/relay
-VERSION ?= 0.1.1
+VERSION ?= 0.1.2
 
 all: test build
 

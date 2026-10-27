@@ -13,7 +13,7 @@ RUN go mod download
 
 # Compile static binary
 COPY . .
-ARG VERSION=0.1.1
+ARG VERSION=0.1.2
 RUN CGO_ENABLED=0 GOOS=linux go build \
     -trimpath \
     -ldflags="-s -w -X main.Version=${VERSION}" \

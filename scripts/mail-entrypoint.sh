@@ -38,8 +38,6 @@ export MAX_MESSAGE_SIZE="${MAX_MESSAGE_SIZE:-26214400}"
 if [[ -z "${SMTP_PASS:-}" ]]; then
     if [[ -f "/run/secrets/smtp_pass" ]]; then
         SMTP_PASS=$(tr -d '\n\r' < /run/secrets/smtp_pass)
-    elif [[ -f "/run/secrets/smtp_sasl_password" ]]; then
-        SMTP_PASS=$(tr -d '\n\r' < /run/secrets/smtp_sasl_password)
     else
         SMTP_PASS=$(openssl rand -hex 16)
         echo "[INFO] Generated ephemeral submission password: ${SMTP_PASS}"
@@ -50,8 +48,6 @@ export SMTP_PASS
 if [[ -z "${RELAY_INTEGRITY_SECRET:-}" ]]; then
     if [[ -f "/run/secrets/relay_integrity_secret" ]]; then
         RELAY_INTEGRITY_SECRET=$(tr -d '\n\r' < /run/secrets/relay_integrity_secret)
-    elif [[ -f "/run/secrets/integrity_secret" ]]; then
-        RELAY_INTEGRITY_SECRET=$(tr -d '\n\r' < /run/secrets/integrity_secret)
     else
         RELAY_INTEGRITY_SECRET=$(openssl rand -hex 32)
     fi
@@ -193,6 +189,12 @@ fi
 
 echo "[INFO] OpenDKIM signing registered domains:${REGISTERED_DOMAINS}"
 
+# Enforce secure directory and file permissions without stripping directory traversal (+x)
+find /etc/opendkim /etc/relay/dkim -type d -exec chmod 750 {} + 2>/dev/null || true
+find /etc/opendkim -maxdepth 1 -type f -exec chmod 640 {} + 2>/dev/null || true
+find /etc/opendkim/keys /etc/relay/dkim -type f -name "*.private" -exec chmod 400 {} + 2>/dev/null || true
+chown -R opendkim:opendkim /var/run/opendkim /etc/opendkim /etc/relay/dkim 2>/dev/null || true
+
 # Enforce secure permissions on generated tables
 chown opendkim:opendkim /etc/opendkim/KeyTable /etc/opendkim/SigningTable /etc/opendkim/TrustedHosts /etc/opendkim/opendkim.conf
 chmod 640 /etc/opendkim/KeyTable /etc/opendkim/SigningTable /etc/opendkim/TrustedHosts /etc/opendkim/opendkim.conf
@@ -237,7 +239,7 @@ newaliases 2>/dev/null || true
 postfix set-permissions 2>/dev/null || true
 
 # Ensure spool directory exists with strict permissions
-SPOOL_DIR_VAL="${SPOOL_DIR:-${RELAY_SPOOL_DIR:-/var/spool/drop-relay}}"
+SPOOL_DIR_VAL="${SPOOL_DIR:-/var/spool/drop-relay}"
 mkdir -p "$SPOOL_DIR_VAL"
 chmod 750 "$SPOOL_DIR_VAL"
 
