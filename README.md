@@ -11,7 +11,7 @@
                 │                         drop-relay                          │
                 │                                                             │
 HTTP /v1/send ─►│ [Ingest API] ──► [Spool Buffer] ──► [OpenDKIM] ──► [Postfix]├─► Remote MX / Smart-Host
-SMTP Submission►│ (Port 587)          (Mem/Redis)       (RSA-2048)   │ (Port 25)│
+SMTP Submission►│ (Port 587)          (Mem/Redis)       (RSA-2048)  │(Port 25)│
 Inbound MX ────►│ [Postfix :25] ──────────────────► [HMAC Bridge] ────────────┼─► HTTP Inbound Webhook
                 └─────────────────────────────────────────────────────────────┘
 ```
