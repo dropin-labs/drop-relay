@@ -38,6 +38,8 @@ export MAX_MESSAGE_SIZE="${MAX_MESSAGE_SIZE:-26214400}"
 if [[ -z "${SMTP_PASS:-}" ]]; then
     if [[ -f "/run/secrets/smtp_pass" ]]; then
         SMTP_PASS=$(tr -d '\n\r' < /run/secrets/smtp_pass)
+    elif [[ -f "/run/secrets/smtp_sasl_password" ]]; then
+        SMTP_PASS=$(tr -d '\n\r' < /run/secrets/smtp_sasl_password)
     else
         SMTP_PASS=$(openssl rand -hex 16)
         echo "[INFO] Generated ephemeral submission password: ${SMTP_PASS}"
@@ -46,7 +48,9 @@ fi
 export SMTP_PASS
 
 if [[ -z "${RELAY_INTEGRITY_SECRET:-}" ]]; then
-    if [[ -f "/run/secrets/integrity_secret" ]]; then
+    if [[ -f "/run/secrets/relay_integrity_secret" ]]; then
+        RELAY_INTEGRITY_SECRET=$(tr -d '\n\r' < /run/secrets/relay_integrity_secret)
+    elif [[ -f "/run/secrets/integrity_secret" ]]; then
         RELAY_INTEGRITY_SECRET=$(tr -d '\n\r' < /run/secrets/integrity_secret)
     else
         RELAY_INTEGRITY_SECRET=$(openssl rand -hex 32)
@@ -54,22 +58,40 @@ if [[ -z "${RELAY_INTEGRITY_SECRET:-}" ]]; then
 fi
 export RELAY_INTEGRITY_SECRET
 
+if [[ -z "${RELAY_API_KEY:-}" ]]; then
+    if [[ -f "/run/secrets/relay_api_key" ]]; then
+        RELAY_API_KEY=$(tr -d '\n\r' < /run/secrets/relay_api_key)
+        export RELAY_API_KEY
+    fi
+fi
+
 # ── 3. Resolve or Generate TLS Certificates ───────────────────────────────────
 export TLS_CERT_PATH="${TLS_CERT_PATH:-}"
 export TLS_KEY_PATH="${TLS_KEY_PATH:-}"
 
 if [[ -z "$TLS_CERT_PATH" ]] || [[ ! -f "$TLS_CERT_PATH" ]] || [[ -z "$TLS_KEY_PATH" ]] || [[ ! -f "$TLS_KEY_PATH" ]]; then
-    echo "[INFO] Production TLS certificate not found. Generating ephemeral self-signed certificate..."
-    mkdir -p /etc/postfix/ssl
-    TLS_CERT_PATH="/etc/postfix/ssl/ephemeral.crt"
-    TLS_KEY_PATH="/etc/postfix/ssl/ephemeral.key"
-    if [[ ! -f "$TLS_CERT_PATH" ]]; then
-        openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-            -keyout "$TLS_KEY_PATH" \
-            -out "$TLS_CERT_PATH" \
-            -subj "/CN=${RELAY_HOSTNAME}/O=drop-relay" 2>/dev/null
-        chmod 600 "$TLS_KEY_PATH"
-        chmod 644 "$TLS_CERT_PATH"
+    # Check standard Let's Encrypt live certificates if mounted
+    if [[ -f "/etc/letsencrypt/live/${RELAY_DOMAIN}/fullchain.pem" ]] && [[ -f "/etc/letsencrypt/live/${RELAY_DOMAIN}/privkey.pem" ]]; then
+        TLS_CERT_PATH="/etc/letsencrypt/live/${RELAY_DOMAIN}/fullchain.pem"
+        TLS_KEY_PATH="/etc/letsencrypt/live/${RELAY_DOMAIN}/privkey.pem"
+        echo "[INFO] Using mounted Let's Encrypt certificates for ${RELAY_DOMAIN}"
+    elif [[ -f "/etc/letsencrypt/live/${RELAY_HOSTNAME}/fullchain.pem" ]] && [[ -f "/etc/letsencrypt/live/${RELAY_HOSTNAME}/privkey.pem" ]]; then
+        TLS_CERT_PATH="/etc/letsencrypt/live/${RELAY_HOSTNAME}/fullchain.pem"
+        TLS_KEY_PATH="/etc/letsencrypt/live/${RELAY_HOSTNAME}/privkey.pem"
+        echo "[INFO] Using mounted Let's Encrypt certificates for ${RELAY_HOSTNAME}"
+    else
+        echo "[INFO] Production TLS certificate not found. Generating ephemeral self-signed certificate..."
+        mkdir -p /etc/postfix/ssl
+        TLS_CERT_PATH="/etc/postfix/ssl/ephemeral.crt"
+        TLS_KEY_PATH="/etc/postfix/ssl/ephemeral.key"
+        if [[ ! -f "$TLS_CERT_PATH" ]]; then
+            openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+                -keyout "$TLS_KEY_PATH" \
+                -out "$TLS_CERT_PATH" \
+                -subj "/CN=${RELAY_HOSTNAME}/O=drop-relay" 2>/dev/null
+            chmod 600 "$TLS_KEY_PATH"
+            chmod 644 "$TLS_CERT_PATH"
+        fi
     fi
 fi
 export TLS_CERT_PATH
@@ -94,16 +116,10 @@ chmod 640 /etc/sasl2/sasldb2
 
 # ── 5. OpenDKIM Cryptographic Key & Multi-Tenant Table Hydration ──────────────
 echo "[INFO] Configuring OpenDKIM milter tables..."
-mkdir -p /var/run/opendkim /etc/opendkim/keys /etc/relay/dkim
-chown -R opendkim:opendkim /var/run/opendkim /etc/opendkim /etc/relay/dkim 2>/dev/null || true
-find /etc/opendkim /etc/relay/dkim -type d -exec chmod 750 {} + 2>/dev/null || true
-
-# Ensure primary domain key exists
-PRIMARY_KEY="/etc/opendkim/keys/${DKIM_SELECTOR}.private"
-if [[ ! -f "$PRIMARY_KEY" ]] && [[ ! -f "/etc/relay/dkim/${RELAY_DOMAIN}.private" ]]; then
-    echo "[INFO] DKIM private key not found for ${RELAY_DOMAIN}. Generating 2048-bit RSA key..."
-    /usr/local/bin/relay generate-dkim -domain "$RELAY_DOMAIN" -selector "$DKIM_SELECTOR" -out "$PRIMARY_KEY"
-fi
+RUNTIME_KEYS_DIR="/var/run/opendkim/keys"
+mkdir -p "$RUNTIME_KEYS_DIR" /etc/opendkim
+chmod 700 "$RUNTIME_KEYS_DIR"
+chown -R opendkim:opendkim /var/run/opendkim
 
 # Initialize tables
 true > /etc/opendkim/KeyTable
@@ -120,6 +136,8 @@ ${RELAY_DOMAIN}
 EOF
 
 # Multi-tenant scanner: inspect both /etc/opendkim/keys and /etc/relay/dkim
+# Keys are safely copied to the internal runtime directory so ownership (opendkim:opendkim)
+# and permissions (0400) are enforced without modifying read-only host mounts (:ro).
 REGISTERED_DOMAINS=""
 for KEY_PATH in /etc/opendkim/keys/*.private /etc/relay/dkim/*.private; do
     [[ -f "$KEY_PATH" ]] || continue
@@ -141,11 +159,13 @@ for KEY_PATH in /etc/opendkim/keys/*.private /etc/relay/dkim/*.private; do
         CUR_DOM="$FILENAME"
     fi
 
-    chown opendkim:opendkim "$KEY_PATH"
-    chmod 400 "$KEY_PATH"
+    RUNTIME_KEY="$RUNTIME_KEYS_DIR/${FILENAME}.private"
+    cp "$KEY_PATH" "$RUNTIME_KEY"
+    chown opendkim:opendkim "$RUNTIME_KEY"
+    chmod 400 "$RUNTIME_KEY"
 
     RECORD_TAG="${CUR_SEL}._domainkey.${CUR_DOM}"
-    echo "${RECORD_TAG} ${CUR_DOM}:${CUR_SEL}:${KEY_PATH}" >> /etc/opendkim/KeyTable
+    echo "${RECORD_TAG} ${CUR_DOM}:${CUR_SEL}:${RUNTIME_KEY}" >> /etc/opendkim/KeyTable
     echo "*@${CUR_DOM} ${RECORD_TAG}" >> /etc/opendkim/SigningTable
     echo "*@*.${CUR_DOM} ${RECORD_TAG}" >> /etc/opendkim/SigningTable
 
@@ -155,13 +175,27 @@ for KEY_PATH in /etc/opendkim/keys/*.private /etc/relay/dkim/*.private; do
     REGISTERED_DOMAINS="${REGISTERED_DOMAINS} ${CUR_DOM}(${CUR_SEL})"
 done
 
+# If no keys were found in mounted paths, generate ephemeral fallback key
+PRIMARY_RUNTIME_KEY="$RUNTIME_KEYS_DIR/${DKIM_SELECTOR}.private"
+if [[ -z "$REGISTERED_DOMAINS" ]]; then
+    echo "[INFO] DKIM private key not found for ${RELAY_DOMAIN}. Generating 2048-bit RSA key..."
+    /usr/local/bin/relay generate-dkim -domain "$RELAY_DOMAIN" -selector "$DKIM_SELECTOR" -out "$PRIMARY_RUNTIME_KEY"
+    chown opendkim:opendkim "$PRIMARY_RUNTIME_KEY"
+    chmod 400 "$PRIMARY_RUNTIME_KEY"
+
+    RECORD_TAG="${DKIM_SELECTOR}._domainkey.${RELAY_DOMAIN}"
+    echo "${RECORD_TAG} ${RELAY_DOMAIN}:${DKIM_SELECTOR}:${PRIMARY_RUNTIME_KEY}" >> /etc/opendkim/KeyTable
+    echo "*@${RELAY_DOMAIN} ${RECORD_TAG}" >> /etc/opendkim/SigningTable
+    echo "*@*.${RELAY_DOMAIN} ${RECORD_TAG}" >> /etc/opendkim/SigningTable
+
+    REGISTERED_DOMAINS=" ${RELAY_DOMAIN}(${DKIM_SELECTOR})"
+fi
+
 echo "[INFO] OpenDKIM signing registered domains:${REGISTERED_DOMAINS}"
 
-# Enforce secure directory and file permissions without stripping directory traversal (+x)
-find /etc/opendkim /etc/relay/dkim -type d -exec chmod 750 {} + 2>/dev/null || true
-find /etc/opendkim -maxdepth 1 -type f -exec chmod 640 {} + 2>/dev/null || true
-find /etc/opendkim/keys /etc/relay/dkim -type f -name "*.private" -exec chmod 400 {} + 2>/dev/null || true
-chown -R opendkim:opendkim /var/run/opendkim /etc/opendkim /etc/relay/dkim 2>/dev/null || true
+# Enforce secure permissions on generated tables
+chown opendkim:opendkim /etc/opendkim/KeyTable /etc/opendkim/SigningTable /etc/opendkim/TrustedHosts /etc/opendkim/opendkim.conf
+chmod 640 /etc/opendkim/KeyTable /etc/opendkim/SigningTable /etc/opendkim/TrustedHosts /etc/opendkim/opendkim.conf
 
 # ── 6. Inbound Webhook Configuration ──────────────────────────────────────────
 mkdir -p /etc/drop-relay
@@ -201,6 +235,11 @@ fi
 
 newaliases 2>/dev/null || true
 postfix set-permissions 2>/dev/null || true
+
+# Ensure spool directory exists with strict permissions
+SPOOL_DIR_VAL="${SPOOL_DIR:-${RELAY_SPOOL_DIR:-/var/spool/drop-relay}}"
+mkdir -p "$SPOOL_DIR_VAL"
+chmod 750 "$SPOOL_DIR_VAL"
 
 # Re-assert permissions
 chown root:nobody /etc/drop-relay/inbound.env /usr/local/bin/mail-ingest.sh
