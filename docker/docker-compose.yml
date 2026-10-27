@@ -3,7 +3,7 @@ services:
   relay:
     container_name: drop-relay
     build:
-      context: ..
+      context: .
       dockerfile: docker/Dockerfile
     restart: unless-stopped
     ports:
