@@ -13,9 +13,10 @@ RUN go mod download
 
 # Compile static binary
 COPY . .
+ARG VERSION=0.1.1
 RUN CGO_ENABLED=0 GOOS=linux go build \
     -trimpath \
-    -ldflags="-s -w -X main.Version=0.1.0" \
+    -ldflags="-s -w -X main.Version=${VERSION}" \
     -o /bin/relay ./cmd/relay
 
 # ── Stage 2: Hardened Runtime ─────────────────────────────────────────────────

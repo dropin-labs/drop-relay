@@ -5,13 +5,14 @@
 .PHONY: all build test test-race test-e2e lint clean dkim verify-dns scan scan-fs scan-image docker-build docker-up docker-down
 
 BINARY=bin/relay
+VERSION ?= 0.1.1
 
 all: test build
 
 build:
 	@echo "==> Building relay binary..."
 	@mkdir -p bin
-	CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.Version=0.1.0" -o $(BINARY) ./cmd/relay
+	CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.Version=$(VERSION)" -o $(BINARY) ./cmd/relay
 
 test:
 	@echo "==> Executing unit test suite..."
