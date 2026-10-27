@@ -2,6 +2,8 @@ package buffer
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -199,5 +201,65 @@ func TestDiskBuffer_OrphanedTmpPurgedOnStartup(t *testing.T) {
 
 	if _, err := os.Stat(orphanTmp); !os.IsNotExist(err) {
 		t.Errorf("expected orphaned .tmp file to be purged on startup, but it still exists")
+	}
+}
+
+func TestDiskBuffer_OverflowRecoveryBeyondCapacity(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "drop-relay-overflow-test-*")
+	if err != nil {
+		t.Fatalf("failed creating temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	spoolDir := filepath.Join(tmpDir, "spool")
+	if err := os.MkdirAll(spoolDir, 0750); err != nil {
+		t.Fatalf("failed creating spool dir: %v", err)
+	}
+
+	// Pre-seed 10 messages into spool on disk
+	const totalMessages = 10
+	for i := 0; i < totalMessages; i++ {
+		id := fmt.Sprintf("overflow_msg_%02d", i)
+		msg := &Message{
+			ID:         id,
+			From:       "sender@example.com",
+			To:         []string{"recipient@example.com"},
+			Subject:    "Overflow Test " + id,
+			EnqueuedAt: time.Now().UTC(),
+		}
+		data, _ := json.Marshal(msg)
+		if err := os.WriteFile(filepath.Join(spoolDir, id+".json"), data, 0600); err != nil {
+			t.Fatalf("failed seeding spool file: %v", err)
+		}
+	}
+
+	// Initialize buffer with capacity of only 3 (less than total 10)
+	buf, err := NewDiskBuffer(tmpDir, 3)
+	if err != nil {
+		t.Fatalf("failed initializing disk buffer: %v", err)
+	}
+	defer buf.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	// Dequeue all 10 messages — the overflow drainer must stream them into queue
+	dequeuedIDs := make(map[string]bool)
+	for i := 0; i < totalMessages; i++ {
+		msg, err := buf.Dequeue(ctx)
+		if err != nil {
+			t.Fatalf("failed dequeuing message %d: %v", i, err)
+		}
+		dequeuedIDs[msg.ID] = true
+		_ = buf.Ack(ctx, msg.ID)
+	}
+
+	if len(dequeuedIDs) != totalMessages {
+		t.Fatalf("expected %d unique messages dequeued, got %d", totalMessages, len(dequeuedIDs))
+	}
+
+	depth, _ := buf.Depth(ctx)
+	if depth != 0 {
+		t.Fatalf("expected depth 0 after acking all, got %d", depth)
 	}
 }

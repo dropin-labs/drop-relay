@@ -88,6 +88,8 @@ func (b *DiskBuffer) recoverPending() error {
 		return err
 	}
 
+	var overflow []*Message
+
 	for _, entry := range entries {
 		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
 			continue
@@ -99,26 +101,51 @@ func (b *DiskBuffer) recoverPending() error {
 			continue // Skip corrupted or unreadable entries
 		}
 
-		var msg Message
-		if err := json.Unmarshal(data, &msg); err != nil {
+		msg := new(Message)
+		if err := json.Unmarshal(data, msg); err != nil {
 			continue
 		}
 
 		b.depth.Add(1)
 
 		if !msg.SendAt.IsZero() && msg.SendAt.After(time.Now().UTC()) {
-			b.scheduleMessage(&msg)
+			b.scheduleMessage(msg)
 		} else {
 			select {
-			case b.queue <- &msg:
+			case b.queue <- msg:
 			default:
-				// Queue capacity reached during recovery
-				break
+				// Channel capacity reached; stage in overflow slice for background draining
+				overflow = append(overflow, msg)
 			}
 		}
 	}
 
+	if len(overflow) > 0 {
+		go b.drainOverflow(overflow)
+	}
+
 	return nil
+}
+
+// drainOverflow continuously streams recovery messages into the dispatch queue as workers create capacity.
+func (b *DiskBuffer) drainOverflow(overflow []*Message) {
+	for _, msg := range overflow {
+		b.mu.RLock()
+		if b.closed.Load() {
+			b.mu.RUnlock()
+			return
+		}
+		b.sendWg.Add(1)
+		b.mu.RUnlock()
+
+		select {
+		case <-b.stopCh:
+			b.sendWg.Done()
+			return
+		case b.queue <- msg:
+			b.sendWg.Done()
+		}
+	}
 }
 
 // scheduleMessage arms a background timer to dispatch the message when its SendAt timestamp arrives.
