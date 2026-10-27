@@ -90,6 +90,25 @@ await transporter.sendMail({
 
 ---
 
+## Security & DevSecOps
+
+`drop-relay` enforces continuous vulnerability, secret leak, and supply chain scanning via **Aqua Security Trivy**:
+
+```bash
+# Run full security audit (filesystem + container image)
+make scan
+
+# Run repository filesystem and Go dependency scan
+make scan-fs
+
+# Run container image CVE scan
+make scan-image
+```
+
+All CI/CD runs and release pipelines enforce a strict gate on `HIGH` and `CRITICAL` findings, automatically uploading SARIF diagnostics to GitHub Security. See [SECURITY.md](SECURITY.md) for full policies.
+
+---
+
 ## License & Contributing
 
 Licensed under the Apache 2.0 License. See [LICENSE](LICENSE) for details.  

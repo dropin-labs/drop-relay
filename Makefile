@@ -2,7 +2,7 @@
 # DROP-RELAY — SYSTEMS MAKEFILE
 # ==============================================================================
 
-.PHONY: all build test test-race test-e2e lint clean dkim verify-dns docker-build docker-up docker-down
+.PHONY: all build test test-race test-e2e lint clean dkim verify-dns scan scan-fs scan-image docker-build docker-up docker-down
 
 BINARY=bin/relay
 
@@ -41,6 +41,18 @@ dkim: build
 verify-dns:
 	@chmod +x scripts/verify-dns.sh
 	@./scripts/verify-dns.sh
+
+scan: docker-build
+	@chmod +x scripts/security-scan.sh
+	@./scripts/security-scan.sh all
+
+scan-fs:
+	@chmod +x scripts/security-scan.sh
+	@./scripts/security-scan.sh fs
+
+scan-image:
+	@chmod +x scripts/security-scan.sh
+	@./scripts/security-scan.sh image
 
 docker-build:
 	@echo "==> Building container image..."

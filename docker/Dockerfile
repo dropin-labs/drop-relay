@@ -19,7 +19,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -o /bin/relay ./cmd/relay
 
 # ── Stage 2: Hardened Runtime ─────────────────────────────────────────────────
-FROM alpine:3.20
+FROM alpine:3.21
 
 # Install Postfix, OpenDKIM, Cyrus SASL, and runtime utilities
 RUN apk add --no-cache \

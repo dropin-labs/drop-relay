@@ -1,0 +1,16 @@
+# ==============================================================================
+# DROP-RELAY: TRIVY EXCLUSIONS (.trivyignore)
+# ==============================================================================
+# Format:
+#   <CVE-ID or Secret-Rule-ID>
+#
+# Rules:
+#   1. Always document the reason, mitigation, date, and approving engineer.
+#   2. Do NOT suppress findings without a written threat assessment.
+#
+# Example:
+#   # Reason: False positive in synthetic test fixture
+#   # Mitigated: Mock secret used only in local testing harness
+#   # Approved: 2026-10-27 by Platform Security
+#   # rule-id: generic-api-key
+# ==============================================================================

@@ -1,0 +1,41 @@
+# ==============================================================================
+# DROP-RELAY: TRIVY DEVSECOPS CONFIGURATION
+# ==============================================================================
+# Modeled after zero-bloat, high-signal security engineering standards.
+# Gates CI/CD and release pipelines strictly on HIGH and CRITICAL vulnerabilities.
+# ==============================================================================
+
+# Exit code: fail (1) when matching findings are detected
+exit-code: 1
+
+# Severity thresholds
+severity:
+  - HIGH
+  - CRITICAL
+
+# Output format for standard CLI runs
+format: table
+
+# Ignore vulnerabilities without an upstream vendor patch to avoid blocking
+# on upstream OS distribution release latency
+ignore-unfixed: true
+
+# Enabled scanner modules
+scanners:
+  - vuln
+  - misconfig
+  - secret
+
+# Package types to audit
+pkg:
+  types:
+    - os
+    - library
+
+# Secret scanning
+secret:
+  enable: true
+
+# Misconfiguration scanning (Dockerfiles, Compose, Actions)
+misconfiguration:
+  include-non-failures: false
