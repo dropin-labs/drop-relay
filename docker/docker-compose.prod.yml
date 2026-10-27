@@ -1,0 +1,79 @@
+# ==============================================================================
+# DROP-RELAY — PRODUCTION DOCKER COMPOSE MANIFEST (VPS 161.97.140.8)
+# ==============================================================================
+# Target Host: Contabo Cloud VPS 4 (161.97.140.8 / Ubuntu 24.04 LTS)
+# Domain Context: dropin.rw | mail.dropin.rw | DKIM Selector: dropin
+# ==============================================================================
+
+services:
+  relay:
+    container_name: drop-relay
+    image: dropinlabs/drop-relay:0.1.1
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${PORT_MX:-25}:25"
+      - "${PORT_SUBMISSION:-587}:587"
+      - "${PORT_HTTP:-8080}:8080"
+    environment:
+      RELAY_DOMAIN: ${RELAY_DOMAIN:-dropin.rw}
+      RELAY_HOSTNAME: ${RELAY_HOSTNAME:-mail.dropin.rw}
+      RELAY_PORT_HTTP: 8080
+      RELAY_API_KEY: ${RELAY_API_KEY}
+      SMTP_USER: ${SMTP_USER:-dropin_mailer}
+      SMTP_PASS: ${SMTP_PASS}
+      DKIM_SELECTOR: ${DKIM_SELECTOR:-dropin}
+      INBOUND_WEBHOOK_URL: ${INBOUND_WEBHOOK_URL:-http://dropin-api:3000/api/internal/mail/inbound}
+      RELAY_INTEGRITY_SECRET: ${RELAY_INTEGRITY_SECRET}
+      BUFFER_TYPE: ${BUFFER_TYPE:-disk}
+      SPOOL_DIR: ${SPOOL_DIR:-/var/spool/drop-relay}
+      UPSTREAM_SMART_HOST: ${UPSTREAM_SMART_HOST:-}
+      UPSTREAM_AUTH_USER: ${UPSTREAM_AUTH_USER:-}
+      UPSTREAM_AUTH_PASS: ${UPSTREAM_AUTH_PASS:-}
+      TLS_CERT_PATH: ${TLS_CERT_PATH:-/etc/letsencrypt/live/dropin.rw/fullchain.pem}
+      TLS_KEY_PATH: ${TLS_KEY_PATH:-/etc/letsencrypt/live/dropin.rw/privkey.pem}
+    volumes:
+      - drop_relay_spool:/var/spool/postfix
+      - drop_relay_disk_buffer:/var/spool/drop-relay
+      - ${DKIM_KEYS_DIR:-/home/iradukunda/Lost/Projects/DropIn/dropin-mvp/infra/keys/prod/dkim}:/etc/opendkim/keys:ro
+      - certbot_conf:/etc/letsencrypt:ro
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+      - CHOWN
+      - FOWNER
+      - FSETID
+      - KILL
+      - SYS_CHROOT
+    networks:
+      - dropin-network
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 384M
+        reservations:
+          cpus: "0.10"
+          memory: 128M
+
+volumes:
+  drop_relay_spool:
+    name: drop_relay_spool
+  drop_relay_disk_buffer:
+    name: drop_relay_disk_buffer
+  certbot_conf:
+    external: true
+    name: dropin-mvp_certbot_conf
+
+networks:
+  dropin-network:
+    external: true
+    name: dropin-mvp_dropin-network
