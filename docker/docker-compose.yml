@@ -1,0 +1,76 @@
+services:
+  # ── drop-relay Core Service ─────────────────────────────────────────────────
+  relay:
+    container_name: drop-relay
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${PORT_MX:-25}:25"
+      - "${PORT_SUBMISSION:-587}:587"
+      - "${PORT_HTTP:-8080}:8080"
+    environment:
+      RELAY_DOMAIN: ${RELAY_DOMAIN:-example.com}
+      RELAY_HOSTNAME: ${RELAY_HOSTNAME:-mail.example.com}
+      RELAY_PORT_HTTP: 8080
+      RELAY_API_KEY: ${RELAY_API_KEY:-dev_insecure_token}
+      SMTP_USER: ${SMTP_USER:-relay_user}
+      SMTP_PASS: ${SMTP_PASS:-relay_secret_pass}
+      DKIM_SELECTOR: ${DKIM_SELECTOR:-relay}
+      INBOUND_WEBHOOK_URL: ${INBOUND_WEBHOOK_URL:-}
+      RELAY_INTEGRITY_SECRET: ${RELAY_INTEGRITY_SECRET:-}
+      UPSTREAM_SMART_HOST: ${UPSTREAM_SMART_HOST:-}
+      UPSTREAM_AUTH_USER: ${UPSTREAM_AUTH_USER:-}
+      UPSTREAM_AUTH_PASS: ${UPSTREAM_AUTH_PASS:-}
+      BUFFER_TYPE: ${BUFFER_TYPE:-memory}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+    volumes:
+      - relay_spool:/var/spool/postfix
+      - ./keys:/etc/opendkim/keys
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+      - CHOWN
+      - FOWNER
+      - FSETID
+      - KILL
+      - SYS_CHROOT
+    networks:
+      - relay-network
+
+  # ── Optional: Distributed Redis Streams Spool Buffer ────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: drop-relay-redis
+    restart: unless-stopped
+    profiles:
+      - with-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - relay-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  relay_spool:
+    name: drop_relay_spool
+  redis_data:
+    name: drop_relay_redis_data
+
+networks:
+  relay-network:
+    name: drop_relay_net
+    driver: bridge

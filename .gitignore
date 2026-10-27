@@ -1,0 +1,23 @@
+# Binaries
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test artifacts
+*.test
+*.out
+
+# Cryptographic Keys & Local Environment
+keys/
+*.key
+*.private
+*.pem
+.env
+config/config.yaml
+
+# System & Editor
+.DS_Store
+.idea/
+.vscode/

@@ -1,0 +1,14 @@
+# ==============================================================================
+# DROP-RELAY — HEADER SANITIZATION & PRIVACY FILTER
+# ==============================================================================
+# PCRE rules evaluated by Postfix cleanup(8) to scrub internal infrastructure
+# topology, container addresses, and client fingerprints before external hop.
+
+# Strip internal overlay network Received headers (RFC 1918 + loopbacks + docker networks)
+/^\s*Received:.*(10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|127\.0\.0\.1|localhost|docker|relay)/ IGNORE
+
+# Strip client fingerprints and user agent metadata
+/^\s*User-Agent:/ IGNORE
+/^\s*X-Mailer:/ IGNORE
+/^\s*X-Originating-IP:/ IGNORE
+/^\s*X-Client-IP:/ IGNORE

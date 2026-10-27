@@ -1,0 +1,46 @@
+# ==============================================================================
+# DROP-RELAY — UNIFIED CONFIGURATION BLUEPRINT
+# ==============================================================================
+
+# ── Identity & Network Context ────────────────────────────────────────────────
+domain: "example.com"
+hostname: "mail.example.com"
+port_http: 8080
+api_key: "change_me_to_a_secure_random_hex_string"
+
+# ── Internal SMTP Submission (Port 587) ───────────────────────────────────────
+smtp_user: "relay_user"
+smtp_pass: "change_me_to_a_secure_submission_password"
+submission_host: "127.0.0.1:587"
+
+# ── DKIM Cryptography ─────────────────────────────────────────────────────────
+dkim_selector: "relay"
+dkim_key_path: "/etc/opendkim/keys/relay.private"
+
+# ── Inbound Webhook Bridge (Port 25) ──────────────────────────────────────────
+# Set to an HTTP(S) endpoint to enable webhook streaming of inbound emails
+inbound_webhook_url: "http://app:3000/api/mail/inbound"
+integrity_secret: "change_me_to_a_secure_hmac_secret"
+
+# ── Optional: Upstream Smart-Host Relay ───────────────────────────────────────
+# Uncomment to route outbound deliveries through an external provider
+# upstream_smart_host: "smtp.sendgrid.net:587"
+# upstream_auth_user: "apikey"
+# upstream_auth_pass: "SG.example_key"
+
+# ── TLS Certificates ──────────────────────────────────────────────────────────
+# Leave blank to enable automated ephemeral self-signed bootstrap
+# tls_cert_path: "/etc/letsencrypt/live/mail.example.com/fullchain.pem"
+# tls_key_path: "/etc/letsencrypt/live/mail.example.com/privkey.pem"
+
+# ── Message Queue & Backpressure ──────────────────────────────────────────────
+max_message_size: 26214400 # 25 MB
+buffer_type: "memory"       # "memory" or "redis"
+buffer_capacity: 10000
+
+# ── Redis Settings (if buffer_type: "redis") ──────────────────────────────────
+redis_url: "redis://127.0.0.1:6379"
+redis_stream: "drop_relay_spool"
+redis_group: "relay_workers"
+
+log_level: "info"
