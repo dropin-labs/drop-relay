@@ -32,6 +32,7 @@ type Message struct {
 	Raw        []byte            `json:"raw,omitempty"`
 	Attempts   int               `json:"attempts"`
 	LastError  string            `json:"last_error,omitempty"`
+	SendAt     time.Time         `json:"send_at,omitempty"`
 	EnqueuedAt time.Time         `json:"enqueued_at"`
 }
 

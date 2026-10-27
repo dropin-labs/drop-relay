@@ -16,6 +16,9 @@ type MemoryBuffer struct {
 	capacity int
 	closed   atomic.Bool
 	stopCh   chan struct{}
+	sendWg   sync.WaitGroup
+	timersMu sync.Mutex
+	timers   map[string]*time.Timer
 }
 
 // NewMemoryBuffer creates a thread-safe bounded in-memory buffer.
@@ -28,10 +31,11 @@ func NewMemoryBuffer(capacity int) *MemoryBuffer {
 		inFlight: make(map[string]*Message),
 		capacity: capacity,
 		stopCh:   make(chan struct{}),
+		timers:   make(map[string]*time.Timer),
 	}
 }
 
-// Enqueue adds a message to the buffer. If the buffer is full, it immediately returns ErrBufferFull.
+// Enqueue adds a message to the buffer or schedules it for deferred dispatch.
 func (b *MemoryBuffer) Enqueue(ctx context.Context, msg *Message) error {
 	if b.closed.Load() {
 		return ErrBufferClosed
@@ -45,6 +49,11 @@ func (b *MemoryBuffer) Enqueue(ctx context.Context, msg *Message) error {
 		msg.EnqueuedAt = time.Now().UTC()
 	}
 
+	if !msg.SendAt.IsZero() && msg.SendAt.After(time.Now().UTC()) {
+		b.schedule(msg)
+		return nil
+	}
+
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -54,6 +63,49 @@ func (b *MemoryBuffer) Enqueue(ctx context.Context, msg *Message) error {
 		return nil
 	default:
 		return ErrBufferFull
+	}
+}
+
+func (b *MemoryBuffer) schedule(msg *Message) {
+	delay := time.Until(msg.SendAt)
+	if delay <= 0 {
+		b.sendQueue(msg)
+		return
+	}
+
+	b.timersMu.Lock()
+	defer b.timersMu.Unlock()
+
+	if b.closed.Load() {
+		return
+	}
+
+	timer := time.AfterFunc(delay, func() {
+		b.timersMu.Lock()
+		delete(b.timers, msg.ID)
+		b.timersMu.Unlock()
+
+		b.sendQueue(msg)
+	})
+
+	b.timers[msg.ID] = timer
+}
+
+func (b *MemoryBuffer) sendQueue(msg *Message) bool {
+	b.mu.RLock()
+	if b.closed.Load() {
+		b.mu.RUnlock()
+		return false
+	}
+	b.sendWg.Add(1)
+	b.mu.RUnlock()
+	defer b.sendWg.Done()
+
+	select {
+	case <-b.stopCh:
+		return false
+	case b.queue <- msg:
+		return true
 	}
 }
 
@@ -94,6 +146,13 @@ func (b *MemoryBuffer) trackInFlight(msg *Message) {
 
 // Ack confirms successful processing of a message and removes it from the in-flight tracker.
 func (b *MemoryBuffer) Ack(_ context.Context, id string) error {
+	b.timersMu.Lock()
+	if t, ok := b.timers[id]; ok {
+		t.Stop()
+		delete(b.timers, id)
+	}
+	b.timersMu.Unlock()
+
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	delete(b.inFlight, id)
@@ -144,8 +203,21 @@ func (b *MemoryBuffer) Depth(_ context.Context) (int64, error) {
 
 // Close shuts down the buffer cleanly.
 func (b *MemoryBuffer) Close() error {
-	if b.closed.CompareAndSwap(false, true) {
-		close(b.stopCh)
+	b.mu.Lock()
+	if !b.closed.CompareAndSwap(false, true) {
+		b.mu.Unlock()
+		return nil
 	}
+	close(b.stopCh)
+
+	b.timersMu.Lock()
+	for _, t := range b.timers {
+		t.Stop()
+	}
+	b.timers = make(map[string]*time.Timer)
+	b.timersMu.Unlock()
+	b.mu.Unlock()
+
+	b.sendWg.Wait()
 	return nil
 }

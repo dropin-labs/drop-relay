@@ -19,7 +19,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -o /bin/relay ./cmd/relay
 
 # ── Stage 2: Hardened Runtime ─────────────────────────────────────────────────
-FROM alpine:3.20
+FROM alpine:3.21
 
 # Install Postfix, OpenDKIM, Cyrus SASL, and runtime utilities
 RUN apk add --no-cache \
@@ -40,6 +40,7 @@ RUN apk add --no-cache \
 
 # Directory scaffold & permissions
 RUN mkdir -p /var/spool/postfix \
+    && mkdir -p /var/spool/drop-relay \
     && mkdir -p /var/run/opendkim \
     && mkdir -p /etc/opendkim/keys \
     && mkdir -p /etc/relay/dkim \
@@ -47,7 +48,7 @@ RUN mkdir -p /var/spool/postfix \
     && mkdir -p /etc/drop-relay \
     && chown -R opendkim:opendkim /var/run/opendkim /etc/opendkim /etc/relay/dkim \
     && chmod 755 /var/run/opendkim \
-    && chmod 750 /etc/opendkim/keys /etc/relay/dkim
+    && chmod 750 /etc/opendkim/keys /etc/relay/dkim /var/spool/drop-relay
 
 # Copy configuration blueprints and runtime templates
 COPY config/postfix/main.cf.tpl /etc/postfix/main.cf.tpl

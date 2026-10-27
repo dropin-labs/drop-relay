@@ -35,8 +35,9 @@ integrity_secret: "change_me_to_a_secure_hmac_secret"
 
 # ── Message Queue & Backpressure ──────────────────────────────────────────────
 max_message_size: 26214400 # 25 MB
-buffer_type: "memory"       # "memory" or "redis"
+buffer_type: "disk"         # "disk" (crash-durable), "memory", or "redis"
 buffer_capacity: 10000
+spool_dir: "/var/spool/drop-relay" # Persistent spool directory (for buffer_type: "disk")
 
 # ── Redis Settings (if buffer_type: "redis") ──────────────────────────────────
 redis_url: "redis://127.0.0.1:6379"

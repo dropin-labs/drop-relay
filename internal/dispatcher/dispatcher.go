@@ -5,7 +5,9 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"mime"
 	"mime/multipart"
+	"mime/quotedprintable"
 	"net"
 	"net/smtp"
 	"net/textproto"
@@ -87,6 +89,26 @@ func (d *Dispatcher) worker(_ int) {
 
 		if msg == nil {
 			continue
+		}
+
+		// Safeguard against prematurely dequeued scheduled messages
+		if !msg.SendAt.IsZero() && time.Now().UTC().Before(msg.SendAt) {
+			delay := time.Until(msg.SendAt)
+			if delay > 0 && delay <= 200*time.Millisecond {
+				select {
+				case <-d.ctx.Done():
+					return
+				case <-time.After(delay):
+				}
+			} else {
+				// Re-enqueue after remaining duration so worker is not blocked
+				go func(m *buffer.Message, waitDur time.Duration) {
+					time.Sleep(waitDur)
+					_ = d.buffer.Enqueue(context.Background(), m)
+				}(msg, delay)
+				_ = d.buffer.Ack(context.Background(), msg.ID)
+				continue
+			}
 		}
 
 		start := time.Now()
@@ -187,7 +209,12 @@ func (d *Dispatcher) buildMIMEMessage(msg *buffer.Message) ([]byte, error) {
 	// Headers
 	fromHeader := msg.From
 	if msg.FromName != "" {
-		fromHeader = fmt.Sprintf("\"%s\" <%s>", strings.ReplaceAll(msg.FromName, "\"", ""), msg.From)
+		cleanName := strings.ReplaceAll(msg.FromName, "\"", "")
+		if !isASCII(cleanName) {
+			fromHeader = fmt.Sprintf("%s <%s>", mime.QEncoding.Encode("utf-8", cleanName), msg.From)
+		} else {
+			fromHeader = fmt.Sprintf("\"%s\" <%s>", cleanName, msg.From)
+		}
 	}
 
 	headers := make(map[string]string)
@@ -200,7 +227,7 @@ func (d *Dispatcher) buildMIMEMessage(msg *buffer.Message) ([]byte, error) {
 	if len(msg.Cc) > 0 {
 		headers["Cc"] = strings.Join(msg.Cc, ", ")
 	}
-	headers["Subject"] = msg.Subject
+	headers["Subject"] = encodeHeaderWord(msg.Subject)
 	headers["Date"] = time.Now().UTC().Format(time.RFC1123Z)
 	if _, ok := headers["Message-ID"]; !ok {
 		headers["Message-ID"] = fmt.Sprintf("<%s@%s>", msg.ID, d.cfg.Domain)
@@ -217,25 +244,25 @@ func (d *Dispatcher) buildMIMEMessage(msg *buffer.Message) ([]byte, error) {
 		}
 		buf.WriteString("\r\n")
 
-		// Text Part
+		// Text Part (Quoted-Printable for robust non-ASCII & line wrapping)
 		textHeader := make(textproto.MIMEHeader)
 		textHeader.Set("Content-Type", "text/plain; charset=UTF-8")
-		textHeader.Set("Content-Transfer-Encoding", "8bit")
+		textHeader.Set("Content-Transfer-Encoding", "quoted-printable")
 		partText, err := mpWriter.CreatePart(textHeader)
 		if err != nil {
 			return nil, err
 		}
-		partText.Write([]byte(msg.Text))
+		partText.Write(encodeQuotedPrintable(msg.Text))
 
-		// HTML Part
+		// HTML Part (Quoted-Printable for robust non-ASCII & line wrapping)
 		htmlHeader := make(textproto.MIMEHeader)
 		htmlHeader.Set("Content-Type", "text/html; charset=UTF-8")
-		htmlHeader.Set("Content-Transfer-Encoding", "8bit")
+		htmlHeader.Set("Content-Transfer-Encoding", "quoted-printable")
 		partHTML, err := mpWriter.CreatePart(htmlHeader)
 		if err != nil {
 			return nil, err
 		}
-		partHTML.Write([]byte(msg.HTML))
+		partHTML.Write(encodeQuotedPrintable(msg.HTML))
 
 		if err := mpWriter.Close(); err != nil {
 			return nil, err
@@ -246,22 +273,49 @@ func (d *Dispatcher) buildMIMEMessage(msg *buffer.Message) ([]byte, error) {
 	// Single-part HTML
 	if msg.HTML != "" {
 		headers["Content-Type"] = "text/html; charset=UTF-8"
-		headers["Content-Transfer-Encoding"] = "8bit"
+		headers["Content-Transfer-Encoding"] = "quoted-printable"
 		for k, v := range headers {
 			buf.WriteString(fmt.Sprintf("%s: %s\r\n", k, v))
 		}
 		buf.WriteString("\r\n")
-		buf.WriteString(msg.HTML)
+		buf.Write(encodeQuotedPrintable(msg.HTML))
 		return buf.Bytes(), nil
 	}
 
 	// Single-part Plain Text
 	headers["Content-Type"] = "text/plain; charset=UTF-8"
-	headers["Content-Transfer-Encoding"] = "8bit"
+	headers["Content-Transfer-Encoding"] = "quoted-printable"
 	for k, v := range headers {
 		buf.WriteString(fmt.Sprintf("%s: %s\r\n", k, v))
 	}
 	buf.WriteString("\r\n")
-	buf.WriteString(msg.Text)
+	buf.Write(encodeQuotedPrintable(msg.Text))
 	return buf.Bytes(), nil
+}
+
+// encodeHeaderWord encodes a header string using RFC 2047 Q-Encoding if it contains non-ASCII runes.
+func encodeHeaderWord(s string) string {
+	if isASCII(s) {
+		return s
+	}
+	return mime.QEncoding.Encode("utf-8", s)
+}
+
+// isASCII returns true if all bytes in s are within standard 7-bit US-ASCII range.
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] > 127 {
+			return false
+		}
+	}
+	return true
+}
+
+// encodeQuotedPrintable encodes string payload into quoted-printable bytes conforming to RFC 2045/5322.
+func encodeQuotedPrintable(s string) []byte {
+	var buf bytes.Buffer
+	qp := quotedprintable.NewWriter(&buf)
+	_, _ = qp.Write([]byte(s))
+	_ = qp.Close()
+	return buf.Bytes()
 }

@@ -35,13 +35,16 @@ type SendRequest struct {
 	Text     string            `json:"text,omitempty"`
 	HTML     string            `json:"html,omitempty"`
 	Headers  map[string]string `json:"headers,omitempty"`
+	SendAt   string            `json:"send_at,omitempty"`
+	Delay    string            `json:"delay,omitempty"`
 }
 
 // SendResponse represents the response returned after enqueuing.
 type SendResponse struct {
-	ID        string    `json:"id"`
-	Status    string    `json:"status"`
-	Timestamp time.Time `json:"timestamp"`
+	ID        string     `json:"id"`
+	Status    string     `json:"status"`
+	SendAt    *time.Time `json:"send_at,omitempty"`
+	Timestamp time.Time  `json:"timestamp"`
 }
 
 // ErrorResponse defines standard JSON error responses.
@@ -149,6 +152,31 @@ func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Validate & Parse Scheduling (send_at or delay)
+	if req.SendAt != "" && req.Delay != "" {
+		s.jsonError(w, http.StatusUnprocessableEntity, "Cannot specify both 'send_at' and 'delay'")
+		return
+	}
+
+	var sendAt time.Time
+	if req.Delay != "" {
+		d, err := time.ParseDuration(req.Delay)
+		if err != nil || d < 0 {
+			s.jsonError(w, http.StatusUnprocessableEntity, "Invalid duration in 'delay'; must be valid duration format (e.g. '10s', '5m', '1h')")
+			return
+		}
+		if d > 0 {
+			sendAt = time.Now().UTC().Add(d)
+		}
+	} else if req.SendAt != "" {
+		t, err := time.Parse(time.RFC3339, req.SendAt)
+		if err != nil {
+			s.jsonError(w, http.StatusUnprocessableEntity, "Invalid timestamp in 'send_at'; expected RFC 3339 format (e.g. '2026-10-27T16:00:00Z')")
+			return
+		}
+		sendAt = t.UTC()
+	}
+
 	// Normalize HTML Document Structure
 	htmlBody := strings.TrimSpace(req.HTML)
 	if htmlBody != "" && !strings.HasPrefix(strings.ToLower(htmlBody), "<!doctype html") && !strings.HasPrefix(strings.ToLower(htmlBody), "<html") {
@@ -173,6 +201,7 @@ func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
 		Text:       textBody,
 		HTML:       htmlBody,
 		Headers:    req.Headers,
+		SendAt:     sendAt,
 		EnqueuedAt: time.Now().UTC(),
 	}
 
@@ -190,11 +219,19 @@ func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
 	metrics.IngestedTotal.WithLabelValues("http", "accepted").Inc()
 	metrics.QueueDepth.Inc()
 
+	status := "queued"
+	var respSendAt *time.Time
+	if !sendAt.IsZero() && sendAt.After(time.Now().UTC()) {
+		status = "scheduled"
+		respSendAt = &sendAt
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
 	_ = json.NewEncoder(w).Encode(SendResponse{
 		ID:        msgID,
-		Status:    "queued",
+		Status:    status,
+		SendAt:    respSendAt,
 		Timestamp: msg.EnqueuedAt,
 	})
 }

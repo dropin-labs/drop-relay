@@ -4,6 +4,18 @@
 # ==============================================================================
 set -euo pipefail
 
+# Direct sub-command passthrough (e.g. 'generate-dkim', 'version', or shell execution)
+if [[ $# -gt 0 && "$1" != "serve" ]]; then
+    if [[ "$1" == "generate-dkim" || "$1" == "version" ]]; then
+        exec /usr/local/bin/relay "$@"
+    elif [[ "$1" == "relay" ]]; then
+        shift
+        exec /usr/local/bin/relay "$@"
+    else
+        exec "$@"
+    fi
+fi
+
 # Mirror Postfix syslog to container stdout
 mkdir -p /var/log
 touch /var/log/mail.log
@@ -83,8 +95,8 @@ chmod 640 /etc/sasl2/sasldb2
 # ── 5. OpenDKIM Cryptographic Key & Multi-Tenant Table Hydration ──────────────
 echo "[INFO] Configuring OpenDKIM milter tables..."
 mkdir -p /var/run/opendkim /etc/opendkim/keys /etc/relay/dkim
-chown -R opendkim:opendkim /var/run/opendkim /etc/opendkim /etc/relay/dkim
-chmod 750 /etc/opendkim/keys /etc/relay/dkim
+chown -R opendkim:opendkim /var/run/opendkim /etc/opendkim /etc/relay/dkim 2>/dev/null || true
+find /etc/opendkim /etc/relay/dkim -type d -exec chmod 750 {} + 2>/dev/null || true
 
 # Ensure primary domain key exists
 PRIMARY_KEY="/etc/opendkim/keys/${DKIM_SELECTOR}.private"
@@ -144,8 +156,12 @@ for KEY_PATH in /etc/opendkim/keys/*.private /etc/relay/dkim/*.private; do
 done
 
 echo "[INFO] OpenDKIM signing registered domains:${REGISTERED_DOMAINS}"
-chown opendkim:opendkim /etc/opendkim/*
-chmod 640 /etc/opendkim/*
+
+# Enforce secure directory and file permissions without stripping directory traversal (+x)
+find /etc/opendkim /etc/relay/dkim -type d -exec chmod 750 {} + 2>/dev/null || true
+find /etc/opendkim -maxdepth 1 -type f -exec chmod 640 {} + 2>/dev/null || true
+find /etc/opendkim/keys /etc/relay/dkim -type f -name "*.private" -exec chmod 400 {} + 2>/dev/null || true
+chown -R opendkim:opendkim /var/run/opendkim /etc/opendkim /etc/relay/dkim 2>/dev/null || true
 
 # ── 6. Inbound Webhook Configuration ──────────────────────────────────────────
 mkdir -p /etc/drop-relay

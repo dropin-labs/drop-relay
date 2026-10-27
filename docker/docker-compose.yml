@@ -23,10 +23,12 @@ services:
       UPSTREAM_SMART_HOST: ${UPSTREAM_SMART_HOST:-}
       UPSTREAM_AUTH_USER: ${UPSTREAM_AUTH_USER:-}
       UPSTREAM_AUTH_PASS: ${UPSTREAM_AUTH_PASS:-}
-      BUFFER_TYPE: ${BUFFER_TYPE:-memory}
+      BUFFER_TYPE: ${BUFFER_TYPE:-disk}
+      SPOOL_DIR: ${SPOOL_DIR:-/var/spool/drop-relay}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
     volumes:
       - relay_spool:/var/spool/postfix
+      - relay_disk_buffer:/var/spool/drop-relay
       - ./keys:/etc/opendkim/keys
     security_opt:
       - no-new-privileges:true
@@ -67,6 +69,8 @@ services:
 volumes:
   relay_spool:
     name: drop_relay_spool
+  relay_disk_buffer:
+    name: drop_relay_disk_buffer
   redis_data:
     name: drop_relay_redis_data
 
