@@ -57,12 +57,28 @@ func NewDiskBuffer(baseDir string, capacity int) (*DiskBuffer, error) {
 		timers:   make(map[string]*time.Timer),
 	}
 
+	// Clean any orphaned .tmp fragments left from abrupt power losses or crashes
+	b.cleanOrphanedTmp()
+
 	// Crash Recovery: Hydrate existing spool entries on startup
 	if err := b.recoverPending(); err != nil {
 		return nil, fmt.Errorf("failed recovering disk spool on startup: %w", err)
 	}
 
 	return b, nil
+}
+
+// cleanOrphanedTmp purges uncommitted temporary files from previous abrupt shutdowns.
+func (b *DiskBuffer) cleanOrphanedTmp() {
+	entries, err := os.ReadDir(b.tmpDir)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() && filepath.Ext(entry.Name()) == ".tmp" {
+			_ = os.Remove(filepath.Join(b.tmpDir, entry.Name()))
+		}
+	}
 }
 
 // recoverPending scans the spool directory for un-dispatched messages and populates the in-memory queue or scheduler.

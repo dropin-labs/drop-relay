@@ -173,3 +173,31 @@ func TestDiskBuffer_ScheduledDispatch(t *testing.T) {
 	}
 	_ = buf.Ack(ctx, deqMsg.ID)
 }
+
+func TestDiskBuffer_OrphanedTmpPurgedOnStartup(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "drop-relay-orphan-test-*")
+	if err != nil {
+		t.Fatalf("failed creating temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Pre-create tmp directory and simulate a half-written crashed .tmp file
+	orphanTmp := filepath.Join(tmpDir, "tmp", "crashed_write.tmp")
+	if err := os.MkdirAll(filepath.Dir(orphanTmp), 0750); err != nil {
+		t.Fatalf("failed creating tmp dir: %v", err)
+	}
+	if err := os.WriteFile(orphanTmp, []byte("corrupt-partial-json"), 0600); err != nil {
+		t.Fatalf("failed writing simulated crashed tmp file: %v", err)
+	}
+
+	// Initialize DiskBuffer — should automatically sweep orphaned .tmp files
+	buf, err := NewDiskBuffer(tmpDir, 100)
+	if err != nil {
+		t.Fatalf("failed initializing disk buffer: %v", err)
+	}
+	defer buf.Close()
+
+	if _, err := os.Stat(orphanTmp); !os.IsNotExist(err) {
+		t.Errorf("expected orphaned .tmp file to be purged on startup, but it still exists")
+	}
+}
