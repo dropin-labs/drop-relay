@@ -31,7 +31,7 @@ jobs:
           tags: dropinlabs/drop-relay:pre-publish-audit
 
       - name: Enforce Zero Critical & High Findings
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'image'
           image-ref: 'dropinlabs/drop-relay:pre-publish-audit'

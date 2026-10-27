@@ -43,7 +43,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Run Trivy Vulnerability & Secret Scanner (SARIF)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -61,7 +61,7 @@ jobs:
           category: 'trivy-filesystem'
 
       - name: Enforce Zero Critical & High Findings
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -114,7 +114,7 @@ jobs:
           tags: dropinlabs/drop-relay:ci-scan
 
       - name: Scan Container Image with Trivy (SARIF)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'image'
           image-ref: 'dropinlabs/drop-relay:ci-scan'
@@ -132,7 +132,7 @@ jobs:
           category: 'trivy-container-image'
 
       - name: Enforce Zero Container CVEs Gate
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'image'
           image-ref: 'dropinlabs/drop-relay:ci-scan'
