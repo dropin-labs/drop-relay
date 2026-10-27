@@ -96,6 +96,34 @@ curl -X POST http://localhost:8080/v1/send \
   }'
 ```
 
+#### Scheduled & Delayed Dispatch
+Schedule emails for deferred delivery using either a relative duration string (`delay`) or a future ISO 8601 / RFC 3339 timestamp (`send_at`):
+```bash
+# Relative delay (e.g., 30s, 15m, 2h)
+curl -X POST http://localhost:8080/v1/send \
+  -H "Authorization: Bearer ${RELAY_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "from": "ops@example.com",
+    "to": "user@target.com",
+    "subject": "Follow-up Reminder",
+    "text": "Checking in after 1 hour.",
+    "delay": "1h"
+  }'
+
+# Absolute RFC 3339 timestamp
+curl -X POST http://localhost:8080/v1/send \
+  -H "Authorization: Bearer ${RELAY_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "from": "ops@example.com",
+    "to": "user@target.com",
+    "subject": "Product Launch Announcement",
+    "text": "We are officially live!",
+    "send_at": "2026-10-28T09:00:00Z"
+  }'
+```
+
 ### SMTP Submission (Node.js / Python / Go)
 ```javascript
 const nodemailer = require("nodemailer");
@@ -155,7 +183,8 @@ When `INBOUND_WEBHOOK_URL` is configured, inbound mail delivered to Port 25 is p
 | `SMTP_PASS` | _(generated)_ | **Yes** | Cyrus SASL submission password |
 | `DKIM_SELECTOR` | `relay` | No | DKIM DNS selector (published at `<selector>._domainkey`) |
 | `DKIM_KEY_PATH` | `/etc/relay/dkim/relay.private` | No | File path to 2048-bit RSA private key |
-| `BUFFER_TYPE` | `memory` | No | Spool buffer backend: `memory` or `redis` |
+| `BUFFER_TYPE` | `disk` | No | Spool buffer backend: `disk` (crash-durable), `memory`, or `redis` |
+| `SPOOL_DIR` | `/var/spool/drop-relay` | No | Spool storage path on host/container (when `BUFFER_TYPE=disk`) |
 | `BUFFER_CAPACITY` | `10000` | No | Maximum bounded queue capacity |
 | `REDIS_URL` | `redis://127.0.0.1:6379` | No | Redis connection URI (when `BUFFER_TYPE=redis`) |
 | `INBOUND_WEBHOOK_URL` | _(disabled)_ | No | HTTP webhook endpoint receiving piped inbound `.eml` payloads |

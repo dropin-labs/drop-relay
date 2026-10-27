@@ -45,8 +45,9 @@ type Config struct {
 
 	// Message Policy & Buffer
 	MaxMessageSize int64  `yaml:"max_message_size"`
-	BufferType     string `yaml:"buffer_type"` // "memory" or "redis"
+	BufferType     string `yaml:"buffer_type"` // "memory", "disk", or "redis"
 	BufferCapacity int    `yaml:"buffer_capacity"`
+	SpoolDir       string `yaml:"spool_dir"`
 
 	// Redis Config (if BufferType == "redis")
 	RedisURL    string `yaml:"redis_url"`
@@ -80,6 +81,7 @@ func Load(configPath string) (*Config, error) {
 		MaxMessageSize:       26214400, // 25 MB
 		BufferType:           "memory",
 		BufferCapacity:       10000,
+		SpoolDir:             "/var/spool/drop-relay",
 		RedisURL:             "redis://127.0.0.1:6379",
 		RedisStream:          "drop_relay_spool",
 		RedisGroup:           "relay_workers",
@@ -170,6 +172,11 @@ func Load(configPath string) (*Config, error) {
 		if c, err := strconv.Atoi(v); err == nil && c > 0 {
 			cfg.BufferCapacity = c
 		}
+	}
+	if v := os.Getenv("RELAY_SPOOL_DIR"); v != "" {
+		cfg.SpoolDir = strings.TrimSpace(v)
+	} else if v := os.Getenv("SPOOL_DIR"); v != "" {
+		cfg.SpoolDir = strings.TrimSpace(v)
 	}
 
 	if v := os.Getenv("REDIS_URL"); v != "" {

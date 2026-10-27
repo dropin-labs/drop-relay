@@ -324,6 +324,49 @@ if [[ "$INVALID_EMAIL_CODE" -eq 422 ]]; then
 else
     fail "Expected 422 for invalid email address, got: $INVALID_EMAIL_CODE"
 fi
+
+# Test 6.5: Unicode & RFC 2047 / Quoted-Printable Encoding
+UNICODE_RESP=$(curl -s -w "\n%{http_code}" \
+    -X POST "http://127.0.0.1:${RELAY_TEST_PORT}/v1/send" \
+    -H "Authorization: Bearer ${TEST_API_KEY}" \
+    -H "Content-Type: application/json" \
+    -d '{
+        "from": "ops@example.com",
+        "from_name": "Iradukunda Aimé ✨",
+        "to": "recipient@target.com",
+        "subject": "Muraho Neza 🇷🇼 - Éléphant & Café",
+        "text": "Muraho neza, amakuru yawe? Emojis: 🚀🔥 Accents: é, à, ç, û.",
+        "html": "<p>Muraho neza, amakuru yawe? Emojis: 🚀🔥 Accents: &eacute;, &agrave;.</p>"
+    }')
+
+UNICODE_BODY=$(echo "$UNICODE_RESP" | head -n1)
+UNICODE_STATUS=$(echo "$UNICODE_RESP" | tail -n1)
+if [[ "$UNICODE_STATUS" -eq 202 ]] && echo "$UNICODE_BODY" | grep -q '"status":"queued"'; then
+    pass "Unicode, emojis and international characters accepted and queued"
+else
+    fail "Expected 202 Accepted for Unicode message, got: $UNICODE_STATUS ($UNICODE_BODY)"
+fi
+
+# Test 6.6: Built-in Scheduling & Delayed Delivery
+SCHED_RESP=$(curl -s -w "\n%{http_code}" \
+    -X POST "http://127.0.0.1:${RELAY_TEST_PORT}/v1/send" \
+    -H "Authorization: Bearer ${TEST_API_KEY}" \
+    -H "Content-Type: application/json" \
+    -d '{
+        "from": "ops@example.com",
+        "to": "recipient@target.com",
+        "subject": "Scheduled Reminder",
+        "text": "This message was scheduled with 10s delay.",
+        "delay": "10s"
+    }')
+
+SCHED_BODY=$(echo "$SCHED_RESP" | head -n1)
+SCHED_STATUS=$(echo "$SCHED_RESP" | tail -n1)
+if [[ "$SCHED_STATUS" -eq 202 ]] && echo "$SCHED_BODY" | grep -q '"status":"scheduled"'; then
+    pass "Scheduled email with 'delay' accepted with status: 'scheduled'"
+else
+    fail "Expected status: scheduled for delayed email, got: $SCHED_STATUS ($SCHED_BODY)"
+fi
 echo ""
 
 # ── 7. Prometheus Metrics Audit ───────────────────────────────────────────────
@@ -331,8 +374,8 @@ info "7. Auditing Prometheus Metrics (/metrics)..."
 
 METRICS_DATA=$(curl -s "http://127.0.0.1:${RELAY_TEST_PORT}/metrics")
 
-if echo "$METRICS_DATA" | grep -q 'relay_messages_ingested_total{channel="http",status="accepted"} 1'; then
-    pass "Metric verified: relay_messages_ingested_total{channel=\"http\",status=\"accepted\"} == 1"
+if echo "$METRICS_DATA" | grep -q 'relay_messages_ingested_total{channel="http",status="accepted"} 3'; then
+    pass "Metric verified: relay_messages_ingested_total{channel=\"http\",status=\"accepted\"} == 3"
 else
     fail "Prometheus metric relay_messages_ingested_total not incremented correctly."
 fi
