@@ -54,7 +54,10 @@ services:
       - KILL
       - SYS_CHROOT
     networks:
-      - dropin-network
+      dropin-network:
+        aliases:
+          - drop-relay
+          - dropin-mail
     deploy:
       resources:
         limits:
