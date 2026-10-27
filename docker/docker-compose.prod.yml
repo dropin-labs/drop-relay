@@ -10,7 +10,7 @@ services:
     container_name: drop-relay
     image: dropinlabs/drop-relay:0.1.1
     build:
-      context: ..
+      context: .
       dockerfile: docker/Dockerfile
     restart: unless-stopped
     ports:
@@ -37,7 +37,7 @@ services:
     volumes:
       - drop_relay_spool:/var/spool/postfix
       - drop_relay_disk_buffer:/var/spool/drop-relay
-      - ${DKIM_KEYS_DIR:-/home/iradukunda/Lost/Projects/DropIn/dropin-mvp/infra/keys/prod/dkim}:/etc/opendkim/keys:ro
+      - ${DKIM_KEYS_DIR:-/home/admin/prod/infra/keys/prod/dkim}:/etc/opendkim/keys:ro
       - certbot_conf:/etc/letsencrypt:ro
     security_opt:
       - no-new-privileges:true
@@ -71,9 +71,9 @@ volumes:
     name: drop_relay_disk_buffer
   certbot_conf:
     external: true
-    name: dropin-mvp_certbot_conf
+    name: ${CERTBOT_CONF_VOLUME:-prod_certbot_conf}
 
 networks:
   dropin-network:
     external: true
-    name: dropin-mvp_dropin-network
+    name: ${DROPIN_NETWORK:-prod_dropin-network}
