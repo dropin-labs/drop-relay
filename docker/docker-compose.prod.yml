@@ -10,7 +10,7 @@ services:
     container_name: drop-relay
     image: dropinlabs/drop-relay:0.1.1
     build:
-      context: .
+      context: ..
       dockerfile: docker/Dockerfile
     restart: unless-stopped
     ports:
