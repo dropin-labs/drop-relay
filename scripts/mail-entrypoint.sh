@@ -4,6 +4,18 @@
 # ==============================================================================
 set -euo pipefail
 
+# Direct sub-command passthrough (e.g. 'generate-dkim', 'version', or shell execution)
+if [[ $# -gt 0 && "$1" != "serve" ]]; then
+    if [[ "$1" == "generate-dkim" || "$1" == "version" ]]; then
+        exec /usr/local/bin/relay "$@"
+    elif [[ "$1" == "relay" ]]; then
+        shift
+        exec /usr/local/bin/relay "$@"
+    else
+        exec "$@"
+    fi
+fi
+
 # Mirror Postfix syslog to container stdout
 mkdir -p /var/log
 touch /var/log/mail.log
