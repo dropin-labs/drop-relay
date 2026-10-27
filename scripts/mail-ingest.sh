@@ -44,11 +44,8 @@ HTTP_CODE=$(curl -sS -o /dev/null -w "%{http_code}" \
     -X POST "${INBOUND_WEBHOOK_URL}" \
     -H "Content-Type: message/rfc822" \
     -H "X-Relay-Signature: ${SIG}" \
-    -H "x-dropin-mail-signature: ${SIG}" \
     -H "X-Relay-Recipient: ${RECIPIENT}" \
-    -H "x-dropin-mail-recipient: ${RECIPIENT}" \
     -H "X-Relay-Sender: ${SENDER}" \
-    -H "x-dropin-mail-sender: ${SENDER}" \
     --data-binary "@${TMP_EML}" 2>/dev/null || echo "000")
 
 case "$HTTP_CODE" in
