@@ -4,6 +4,11 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Image version tag (e.g. 0.1.2)'
+        required: false
+        default: '0.1.2'
 
 permissions:
   contents: read
@@ -68,8 +73,15 @@ jobs:
           images: ghcr.io/${{ github.repository }}
           tags: |
             type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=${{ inputs.version || '0.1.2' }},enable=${{ github.event_name == 'workflow_dispatch' }}
             type=raw,value=latest
+          labels: |
+            org.opencontainers.image.title=drop-relay
+            org.opencontainers.image.description=High-throughput, sovereign mail transfer agent (MTA), automated OpenDKIM signing engine, and inbound webhook delivery proxy for modern container architectures.
+            org.opencontainers.image.url=https://github.com/dropin-labs/drop-relay
+            org.opencontainers.image.source=https://github.com/dropin-labs/drop-relay
+            org.opencontainers.image.documentation=https://github.com/dropin-labs/drop-relay#readme
+            org.opencontainers.image.licenses=Apache-2.0
 
       - name: Build and push multi-arch image
         uses: docker/build-push-action@v5

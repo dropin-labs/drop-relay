@@ -22,6 +22,14 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 # ── Stage 2: Hardened Runtime ─────────────────────────────────────────────────
 FROM alpine:3.21
 
+# OCI Image Annotations
+LABEL org.opencontainers.image.title="drop-relay" \
+    org.opencontainers.image.description="High-throughput, sovereign mail transfer agent (MTA), automated OpenDKIM signing engine, and inbound webhook delivery proxy for modern container architectures." \
+    org.opencontainers.image.url="https://github.com/dropin-labs/drop-relay" \
+    org.opencontainers.image.source="https://github.com/dropin-labs/drop-relay" \
+    org.opencontainers.image.documentation="https://github.com/dropin-labs/drop-relay#readme" \
+    org.opencontainers.image.licenses="Apache-2.0"
+
 # Install Postfix, OpenDKIM, Cyrus SASL, and runtime utilities
 RUN apk add --no-cache \
     postfix \
